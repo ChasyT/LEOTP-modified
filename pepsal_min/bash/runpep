@@ -1,0 +1,5 @@
+#!/bin/bash
+cd `dirname $0`
+
+./setipt
+./pepsal -C $1 -n $2

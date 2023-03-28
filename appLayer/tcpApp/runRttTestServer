@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "server bash"
+python ../tcp_test/server.py > ../logs/serverTest.txt
+#python ../tcp_test/server.py

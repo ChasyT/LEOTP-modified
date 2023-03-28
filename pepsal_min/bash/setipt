@@ -1,0 +1,20 @@
+#!/bin/bash
+cd `dirname $0`
+# set iptables
+
+iptables -t mangle -F
+# 设置策略路由
+ip rule add fwmark 1 table 100 
+ip route add local 0.0.0.0/0 dev lo table 100
+
+# 代理局域网设备
+iptables -t mangle -N PEP
+iptables -t mangle -A PEP -d 127.0.0.1/32 -j RETURN
+iptables -t mangle -A PEP -d 224.0.0.0/4 -j RETURN 
+iptables -t mangle -A PEP -d 255.255.255.255/32 -j RETURN 
+iptables -t mangle -A PEP -p TCP -j TPROXY --on-port 5000 --tproxy-mark 1 # 给 TCP 打标记 1，转发至 PEP_PORT 端口
+iptables -t mangle -I PEP -m mark --mark 0xff -j RETURN # 防止环路
+
+# 应用规则
+iptables -t mangle -A PREROUTING -j PEP
+
