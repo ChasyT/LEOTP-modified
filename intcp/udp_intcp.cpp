@@ -785,6 +785,7 @@ void *GSudpRecvLoop(void *_args)
         }
     }
 quit:
+
     if (listenFd > 0)
         close(listenFd);
     if (tunFd > 0)
