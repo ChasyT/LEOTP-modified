@@ -59,7 +59,7 @@ public:
 };
 class IntcpSess{
 public:
-    int socketFd_toReq, socketFd_toResp;
+    int socketFd_toReq, socketFd_toResp, tunFd_toHost, packetId;
     struct sockaddr_in requesterAddr, responderAddr;
     char nameChars[QUAD_STR_LEN];
     int nodeRole;
@@ -82,12 +82,14 @@ public:
         void *(*onNewSess)(void* _sessPtr));
     
     int inputUDP(char *recvBuf, int recvLen);
+    int input2Host(char *recvBuf, int recvLen);
     int request(int rangeStart, int rangeEnd);
     int recvData(char *recvBuf, int maxBufSize, IUINT32 *startPtr, IUINT32 *endPtr);
     void insertData(const char *sendBuf, int start, int end);
 };
 void* TransUpdateLoop(void *args);
 int udpSend(const char* buf,int len, void* user, int dstRole);
+int send2host(const char *buf, int len, void* user);
 int fetchData(char *buf, IUINT32 start, IUINT32 end, void *user);
 shared_ptr<IntcpTransCB> createTransCB(const IntcpSess *sessPtr, int nodeRole, int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user));
 
@@ -113,7 +115,6 @@ struct GSudpRecvLoopArgs
     struct sockaddr_in listenAddr;
     int tunFd=-1;
     int listenFd=-1;
-    int tunStart=77;
     Cache* cachePtr;
 };
 void * GSudpRecvLoop(void *_args);

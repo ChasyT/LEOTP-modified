@@ -9,11 +9,7 @@
 //#include <getopt.h>
 #undef LOG_LEVEL
 #define LOG_LEVEL DEBUG
-//#define FLOW_TEST
 
-using namespace std;
-
-//extern char* optarg;
 char clientAddr[20] = "10.0.1.2";
 
 IUINT32 _round_up(IUINT32 x,IUINT32 y){
@@ -116,7 +112,7 @@ int main(int argc,char** argv){
 
     char tun_name[IFNAMSIZ];
     int tunFd;
-    strcpy(tun_name, "clienttun");
+    strcpy(tun_name, "tun_gs1");
     tunFd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);  /* tun interface */
 
     system("ifconfig clienttun mtu 1472 up 10.0.0.1 netmask 255.255.255.0");

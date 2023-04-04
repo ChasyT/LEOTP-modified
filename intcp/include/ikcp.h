@@ -9,7 +9,7 @@
 #ifndef __INTCP_H__
 #define __INTCP_H__
 
-#define CUT_PAYLOAD
+//#define CUT_PAYLOAD
 
 #define USE_CACHE
 #define HBH_CC
@@ -212,6 +212,8 @@ private:
     list<shared_ptr<IntcpSeg>> intBuf;
     list<shared_ptr<IntcpSeg>> rcvBuf;
     list<RcvBufItr> rcvBufItrs;
+    list<shared_ptr<IntcpSeg>> sndQueueForHost;
+    shared_ptr<char> tmpBufferForHost;
 
 	IUINT32 rcvNxt; // for ordered data receiving
     list<shared_ptr<IntcpSeg>> rcvQueue;
@@ -280,6 +282,7 @@ private:
     
     void *user;
     int (*outputFunc)(const char *buf, int len, void *user, int dstRole);
+    int (*output2Host)(const char *buf, int len, void *user);
 	// set callback called by responseInterest
 	int (*fetchDataFunc)(char *buf, IUINT32 start, IUINT32 end, void *user);
     int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user);
@@ -294,6 +297,7 @@ private:
     void flushIntQueue();
     void flushIntBuf();
     void flushData();
+    void flushDataForHost();
     
     int output(const void *data, int size, int dstRole);
 #ifdef HBH_CC
@@ -347,6 +351,7 @@ public:
     // from the same connection. 'user' will be passed to the output callback
     IntcpTransCB(void *user, 
 			int (*_outputFunc)(const char *buf, int len, void *user, int dstRole), 
+            int (*output2Host)(const char *buf, int len, void *user),
 			int (*_fetchDataFunc)(char *buf, IUINT32 start, IUINT32 end, void *user),
 			int (*_onUnsatInt)(IUINT32 start, IUINT32 end, void *user),
 			// bool _isUnreliable,
@@ -364,6 +369,7 @@ public:
 #endif
     // when you received a low level packet (eg. UDP packet), call it
     int input(char *data, int size);
+    int inputForHost(char *data, int size);
 
     void notifyNewData(const char *buffer, IUINT32 start, IUINT32 end);
 
