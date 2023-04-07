@@ -6,12 +6,9 @@
 #include "tunnel.h"
 
 int chdirProgramDir();
-void startGSRequester(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
-        void *(*onNewSess)(void* _sessPtr),
-        const char* ipStrReq, const char* ipStrResp, uint16_t respPortH, int tunFd);
-void startGSResponder(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
-        void *(*onNewSess)(void* _sessPtr), int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user),
-        const char* ipStr, uint16_t respPortH, int tunFd);
+void startGSnode(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
+        void *(*onNewSess)(void* _sessPtr), const char* ipStr, uint16_t PortH,
+        const char* ipStrOpp, uint16_t PortHOpp, int tunFd);
 void startRequester(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
         void *(*onNewSess)(void* _sessPtr),
         const char* ipStrReq, const char* ipStrResp, uint16_t respPort);

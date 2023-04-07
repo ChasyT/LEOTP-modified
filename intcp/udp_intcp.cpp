@@ -155,6 +155,7 @@ IntcpSess::IntcpSess(in_addr_t reqAddrIP, in_addr_t respAddrIP,
                      void *(*onNewSess)(void *_sessPtr)) : nodeRole(INTCP_ROLE_REQUESTER),
                                                            cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     uint16_t reqAddrPort;
     socketFd_toResp = createSocket(reqAddrIP, htons(DEFAULT_CLIENT_PORT), false, &reqAddrPort);
     if (socketFd_toResp == -1)
@@ -172,8 +173,8 @@ IntcpSess::IntcpSess(in_addr_t reqAddrIP, in_addr_t respAddrIP,
     lock.lock();
     transCB = createTransCB(this, nodeRole, nullptr);
     lock.unlock();
-    pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
-    pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    // pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    // pthread_create(&onNewSessThread, NULL, onNewSess, this);
     return;
 }
 
@@ -183,6 +184,7 @@ IntcpSess::IntcpSess(Quad quad, int listenFd, Cache *_cachePtr,
                      void *(*onNewSess)(void *_sessPtr), int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user)) : nodeRole(INTCP_ROLE_RESPONDER),
                                                                                                                       cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     requesterAddr = quad.getReqAddr();
     responderAddr = quad.getRespAddr();
 
@@ -193,8 +195,8 @@ IntcpSess::IntcpSess(Quad quad, int listenFd, Cache *_cachePtr,
     lock.lock();
     transCB = createTransCB(this, nodeRole, onUnsatInt);
     lock.unlock();
-    pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
-    pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    // pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    // pthread_create(&onNewSessThread, NULL, onNewSess, this);
     return;
 }
 
@@ -204,6 +206,7 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr,
                      void *(*onNewSess)(void *_sessPtr)) : nodeRole(INTCP_ROLE_MIDNODE),
                                                            cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     requesterAddr = quad.getReqAddr();
     responderAddr = quad.getRespAddr();
 
@@ -579,17 +582,12 @@ void *GSudpRecvLoop(void *_args)
     unsigned long int tun_count = 0, nic_count = 0;
     unsigned char buffer[2000];
 
-    // first, create a socket for listening
-    int tunFd = args->tunFd;
-    int listenFd, maxFd;
-    if (args->listenFd == -1)
+    // first, check tunFd & listenFd
+    int tunFd = args->tunFd, listenFd = args->listenFd, maxFd;
+    if (tunFd == -1 || listenFd == -1)
     {
-        listenFd = createSocket(
-            args->listenAddr.sin_addr.s_addr, args->listenAddr.sin_port, false, nullptr);
-    }
-    else
-    {
-        listenFd = args->listenFd;
+        LOG(ERROR, "Fd error.\n");
+        return nullptr;
     }
 
     // prepare for udp recv
@@ -641,9 +639,10 @@ void *GSudpRecvLoop(void *_args)
         if (FD_ISSET(tunFd, &rd_set))
         {
             // data from tun: just read it and write it to the network
+            // responder
             if ((nread = read(tunFd, buffer, sizeof(buffer))) < 0)
             {
-                perror("Read from tun");
+                LOG(ERROR, "Read from tun error.\n");
                 goto quit;
             }
             else if (nread == 0)
@@ -665,19 +664,11 @@ void *GSudpRecvLoop(void *_args)
                     LOG(TRACE, "Read %d bytes from tunFd\n", nread);
                     tun_count++;
                     // set the session
-                    Quad quad(inet_addr(src_ip), DEFAULT_CLIENT_PORT, inet_addr(dst_ip),DEFAULT_SERVER_PORT);
-                    int ret = args->sessMapPtr->readValue(quad.chars, QUAD_STR_LEN, &sessPtr);
-                    if (ret == -1)
+                    sessPtr = args->sessPtrGo;
+                    if (sessPtr->nodeRole != INTCP_ROLE_RESPONDER)
                     {
-                        // if not exist, create one.
-                        LOG(TRACE, "establish: %s->%s", src_ip, dst_ip);
-                        // new responder session
-                        // TODO when to release session?
-                        sessPtr = shared_ptr<IntcpSess>(new IntcpSess(quad, listenFd, args->cachePtr, args->onNewSess, args->onUnsatInt));
-                        sessPtr->tunFd_toHost = tunFd;
-                        sessPtr->packetId = rand() % 100; // random
-                        // nodeRole=server
-                        args->sessMapPtr->setValue(quad.chars, QUAD_STR_LEN, sessPtr);
+                        LOG(ERROR, "nodeRole error.\n");
+                        goto quit;
                     }
                     int len = nread, start = sessPtr->packetId;
                     unsigned char *pt = buffer;
@@ -701,10 +692,15 @@ void *GSudpRecvLoop(void *_args)
                         seg->rangeEnd = start + size;
                         seg->wnd = 0;
                         seg->ts = 0;
-                        // input seg
-                        char *segbuf;
-                        memcpy(segbuf, seg.get(), size + INTCP_OVERHEAD);
-                        sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
+                        // TODO: influenced by interest
+                        // sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
+                        char sndbuftmp[INTCP_MSS];
+                        memcpy(sndbuftmp, seg.get(), INTCP_OVERHEAD+seg->len);
+                        nwrite = write(listenFd, sndbuftmp, INTCP_OVERHEAD+seg->len);
+                        if (nwrite < 0) {
+                            LOG(ERROR, "write to listenFd error.\n");
+                            goto quit;
+                        }
                         start += size;
                         pt += size;
                         len -= size;
@@ -717,9 +713,8 @@ void *GSudpRecvLoop(void *_args)
         if (FD_ISSET(listenFd, &rd_set))
         {
             // data from physical nic, read it and display the IP header
-            IUINT32 cf = _getUsec();
+            // requester
             recvLen = recvmsg(listenFd, &mhdr, 0);
-            IUINT32 df = _getUsec();
             for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&mhdr); cmsg != NULL; cmsg = CMSG_NXTHDR(&mhdr, cmsg))
             {
                 if (cmsg->cmsg_level != SOL_IP || cmsg->cmsg_type != IP_ORIGDSTADDR)
@@ -728,6 +723,13 @@ void *GSudpRecvLoop(void *_args)
             }
             LOG(TRACE, "recv udp len=%d", recvLen);
             // now we get: data in recvBuf, recvLen, sendAddr, recvAddr
+
+            sessPtr = args->sessPtrBack;
+            if (sessPtr->nodeRole != INTCP_ROLE_REQUESTER)
+            {
+                LOG(ERROR, "nodeRole error.\n");
+                goto quit;
+            }
 
             bool isEndp = addrCmp(recvAddr, args->listenAddr);
             int segDstRole = IntcpTransCB::judgeSegDst(recvBuf, recvLen);
@@ -760,28 +762,17 @@ void *GSudpRecvLoop(void *_args)
                     LOG(WARN, "requester recvs an unknown packet");
                     continue;
                 }
-                // if not exist, create one.
-                char sendIPstr[25];
-                writeIPstr(sendIPstr, sendAddr.sin_addr.s_addr);
-                LOG(TRACE, "establish: %s:%d", sendIPstr, ntohs(sendAddr.sin_port));
-                if (isEndp)
-                {
-                    // new responder session
-                    // TODO when to release session?
-                    sessPtr = shared_ptr<IntcpSess>(new IntcpSess(quad, listenFd, args->cachePtr, args->onNewSess, args->onUnsatInt));
-                }
-                else
-                {
-                    // new midnode session
-                    sessPtr = shared_ptr<IntcpSess>(new IntcpSess(quad, args->cachePtr, args->onNewSess));
-                }
-                // nodeRole=server
-                args->sessMapPtr->setValue(quad.chars, QUAD_STR_LEN, sessPtr);
+                continue;
             }
 
             // remove kcp header and send data to host
-            // sessPtr->inputUDP(recvBuf, recvLen);
-            sessPtr->input2Host(recvBuf, recvLen);
+            // sessPtr->input2Host(recvBuf, recvLen);
+            struct IntcpSeg *seg2host = (struct IntcpSeg *)recvBuf;
+            nwrite = write(tunFd, seg2host->data, seg2host->len);
+            if (nwrite < 0) {
+                LOG(ERROR, "write to listenFd error.\n");
+                goto quit;
+            }
         }
     }
 quit:
@@ -789,6 +780,8 @@ quit:
         close(listenFd);
     if (tunFd > 0)
         close(tunFd);
+    printf("Read data from tunFd %d: %lu, from listenFd %d: %lu.\n",
+        tunFd, tun_count, listenFd, nic_count);
     printf("quit!\n");
     return nullptr;
 }

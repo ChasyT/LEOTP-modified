@@ -112,6 +112,8 @@ struct GSudpRecvLoopArgs
     ByteMap<shared_ptr<IntcpSess>> *sessMapPtr;
     void* (*onNewSess)(void*);
     int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user);
+    shared_ptr<IntcpSess> sessPtrBack;
+    shared_ptr<IntcpSess> sessPtrGo;
     struct sockaddr_in listenAddr;
     int tunFd=-1;
     int listenFd=-1;
