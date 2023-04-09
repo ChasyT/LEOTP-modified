@@ -31,14 +31,14 @@ void startGSnode(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr,
         const char* ipStrOpp, uint16_t PortHOpp, int tunFd){
     int ret;
     // requester
-    shared_ptr<IntcpSess> sessPtrBack(new IntcpSess(inet_addr(ipStr), inet_addr(ipStrOpp), ntohs(PortHOpp), 
+    Quad quadBack(inet_addr(ipStr), PortH, inet_addr(ipStrOpp), PortHOpp);
+    shared_ptr<IntcpSess> sessPtrBack(new IntcpSess(quadBack, INTCP_ROLE_REQUESTER, 
             cachePtr, onNewSess));
-    Quad quadBack(sessPtrBack->requesterAddr, sessPtrBack->responderAddr);
     sessMapPtr->setValue(quadBack.chars, QUAD_STR_LEN, sessPtrBack);
     // responder
     Quad quadGo(inet_addr(ipStrOpp), PortHOpp, inet_addr(ipStr), PortH);
-    shared_ptr<IntcpSess> sessPtrGo(new IntcpSess(quadGo, sessPtrBack->socketFd_toResp, cachePtr, 
-            nullptr, nullptr));
+    shared_ptr<IntcpSess> sessPtrGo(new IntcpSess(quadGo, INTCP_ROLE_RESPONDER,
+            cachePtr, nullptr));
     sessMapPtr->setValue(quadGo.chars, QUAD_STR_LEN, sessPtrGo);
 
     struct GSudpRecvLoopArgs args;

@@ -18,6 +18,7 @@ int main(){
     system("ifconfig servertun mtu 1472 up 10.0.101.1 netmask 255.255.255.0");
     system("echo 1 | dd of=/proc/sys/net/ipv4/ip_forward");
     system("route del default");
+    system("route del -net 10.0.1.0/24 dev gs2_m1");
     system("route add -host 10.0.1.2 gw 10.0.3.1 dev gs2_m1");
     system("route add default gw 10.0.101.2 servertun");
 

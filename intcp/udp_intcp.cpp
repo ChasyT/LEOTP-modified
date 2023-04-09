@@ -222,6 +222,36 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr,
     return;
 }
 
+// this is for [GSnode]
+// this is called when receiving a new Quad
+IntcpSess::IntcpSess(Quad quad, int _nodeRole, Cache *_cachePtr,
+                     void *(*onNewSess)(void *_sessPtr)) : nodeRole(_nodeRole),
+                                                           cachePtr(_cachePtr)
+{
+    packetId = rand() % 100;
+    requesterAddr = quad.getReqAddr();
+    responderAddr = quad.getRespAddr();
+    socketFd_toReq = -1;
+    socketFd_toResp = -1;
+
+    if (nodeRole == INTCP_ROLE_REQUESTER)
+    {
+        socketFd_toResp = createSocket(requesterAddr.sin_addr.s_addr, requesterAddr.sin_port, true, nullptr);
+    }
+    else if (nodeRole == INTCP_ROLE_REQUESTER)
+    {
+        socketFd_toReq = createSocket(responderAddr.sin_addr.s_addr, responderAddr.sin_port, true, nullptr);
+    }
+
+    memcpy(nameChars, quad.chars, QUAD_STR_LEN);
+    lock.lock();
+    transCB = createTransCB(this, nodeRole, nullptr);
+    lock.unlock();
+    // pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    // pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    return;
+}
+
 int IntcpSess::inputUDP(char *recvBuf, int recvLen)
 {
     IUINT32 bf = _getMillisec();
@@ -573,14 +603,125 @@ void *udpRecvLoop(void *_args)
     return nullptr;
 }
 
+int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenFd)
+{
+    int len = buflen, tot = 0, nwrite;
+    char *pt = buffer;
+    while (len > 0)
+    {
+        int size = len > (int)INTCP_MSS ? (int)INTCP_MSS : len;
+        shared_ptr<IntcpSeg> seg = IntcpTransCB::createSeg(size);
+        assert(seg);
+        if (seg == NULL)
+        {
+            printf("create seg error.\n");
+            return -1;
+        }
+        if (pt && len > 0)
+        {
+            // LOG(DEBUG,"memcpy size %d",size);
+            memcpy(seg->data, pt, size);
+        }
+        seg->cmd = INTCP_CMD_PUSH;
+        seg->len = size;
+        seg->rangeStart = sess->packetId;
+        seg->rangeEnd = sess->packetId + size;
+        seg->wnd = 0;
+        seg->ts = 0;
+        // TODO: influenced by interest
+        // sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
+        char sndbuftmp[INTCP_MSS];
+        memcpy(sndbuftmp, seg.get(), INTCP_OVERHEAD);
+        memcpy(sndbuftmp + INTCP_OVERHEAD, seg->data, seg->len);
+        // nwrite = write(listenFd, sndbuftmp, INTCP_OVERHEAD+seg->len);
+        struct sockaddr_in *dstAddrPtr = &sess->requesterAddr;
+        nwrite = sendto(listenFd, sndbuftmp, INTCP_OVERHEAD + seg->len, 0,
+                        (struct sockaddr *)dstAddrPtr, AddrLen);
+        if (nwrite == -1)
+        {
+            printf("write return:%d, errno:%d\n", nwrite, errno);
+            LOG(ERROR, "write to listenFd error.\n");
+            return tot;
+        }
+        sess->packetId += size;
+        pt += size;
+        len -= size;
+        tot += nwrite;
+    }
+    return tot;
+}
+
+int GSrecvFunc(char *data, int buflen, int tunFd)
+{
+    int tot = 0, nwrite;
+    IUINT32 ts, sn, len;
+    IUINT32 rangeStart, rangeEnd; // intcp
+    IINT16 wnd;
+    IUINT8 cmd;
+    shared_ptr<IntcpSeg> seg;
+    char *dataOrg = data;
+    int size = buflen;
+    while (1)
+    {
+        if (size < (int)INTCP_OVERHEAD)
+            break;
+        data = decode8u(data, &cmd);
+        data = decode16(data, &wnd);
+        data = decode32u(data, &ts);
+        data = decode32u(data, &sn);
+        data = decode32u(data, &len);
+        // if(len+INTCP_OVERHEAD<size){
+        //     LOG(WARN, "input size %d > seg size %d",size,len+INTCP_OVERHEAD);
+        // }
+        data = decode32u(data, &rangeStart);
+        data = decode32u(data, &rangeEnd);
+        size -= INTCP_OVERHEAD;
+
+        if ((long)size < (long)len || (int)len < 0)
+        {
+            printf("ERROR: GS recv wrong package.\n");
+            return tot;
+        }
+
+        if (cmd != INTCP_CMD_PUSH && cmd != INTCP_CMD_INT)
+        {
+            printf("ERROR: GS recv wrong package.\n");
+            return tot;
+        }
+
+        seg = IntcpTransCB::createSeg(len);
+        seg->cmd = cmd;
+        seg->wnd = wnd;
+        seg->ts = ts;
+        seg->sn = sn;
+        seg->len = len;
+        seg->rangeStart = rangeStart;
+        seg->rangeEnd = rangeEnd;
+        if (len > 0)
+        {
+            memcpy(seg->data, data, len);
+            size -= len;
+
+            nwrite = write(tunFd, seg->data, seg->len);
+            if (nwrite == -1)
+            {
+                LOG(ERROR, "write to listenFd error.\n");
+                return -1;
+            }
+            tot += len;
+        }
+    }
+    return tot;
+}
+
 void *GSudpRecvLoop(void *_args)
 {
     struct GSudpRecvLoopArgs *args = (struct GSudpRecvLoopArgs *)_args;
     char recvBuf[1500]; // for UDP, 1500 is proper
-    uint16_t nread, nwrite;
+    int nread, nwrite;
     int recvLen;
     unsigned long int tun_count = 0, nic_count = 0;
-    unsigned char buffer[2000];
+    char buffer[BUFSIZE];
 
     // first, check tunFd & listenFd
     int tunFd = args->tunFd, listenFd = args->listenFd, maxFd;
@@ -640,7 +781,7 @@ void *GSudpRecvLoop(void *_args)
         {
             // data from tun: just read it and write it to the network
             // responder
-            if ((nread = read(tunFd, buffer, sizeof(buffer))) < 0)
+            if ((nread = read(tunFd, buffer, BUFSIZE)) < 0)
             {
                 LOG(ERROR, "Read from tun error.\n");
                 goto quit;
@@ -661,7 +802,7 @@ void *GSudpRecvLoop(void *_args)
                 if (ipheader->saddr != 0)
                 {
                     // write the data to listen_fd
-                    LOG(TRACE, "Read %d bytes from tunFd\n", nread);
+                    printf("Read %d bytes from tunFd\n", nread);
                     tun_count++;
                     // set the session
                     sessPtr = args->sessPtrGo;
@@ -670,40 +811,10 @@ void *GSudpRecvLoop(void *_args)
                         LOG(ERROR, "nodeRole error.\n");
                         goto quit;
                     }
-                    int len = nread, start = sessPtr->packetId;
-                    unsigned char *pt = buffer;
-                    while (len > 0)
+                    if (GSsendFunc(sessPtr, buffer, nread, listenFd) < nread)
                     {
-                        int size = len > (int)INTCP_MSS ? (int)INTCP_MSS : len;
-                        shared_ptr<IntcpSeg> seg = IntcpTransCB::createSeg(size);
-                        assert(seg);
-                        if (seg == NULL)
-                        {
-                            goto quit;
-                        }
-                        if (pt && len > 0)
-                        {
-                            // LOG(DEBUG,"memcpy size %d",size);
-                            memcpy(seg->data, pt, size);
-                        }
-                        seg->cmd = INTCP_CMD_PUSH;
-                        seg->len = size;
-                        seg->rangeStart = start;
-                        seg->rangeEnd = start + size;
-                        seg->wnd = 0;
-                        seg->ts = 0;
-                        // TODO: influenced by interest
-                        // sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
-                        char sndbuftmp[INTCP_MSS];
-                        memcpy(sndbuftmp, seg.get(), INTCP_OVERHEAD+seg->len);
-                        nwrite = write(listenFd, sndbuftmp, INTCP_OVERHEAD+seg->len);
-                        if (nwrite < 0) {
-                            LOG(ERROR, "write to listenFd error.\n");
-                            goto quit;
-                        }
-                        start += size;
-                        pt += size;
-                        len -= size;
+                        LOG(ERROR, "send data to listenFd error.\n");
+                        goto quit;
                     }
                 }
             }
@@ -714,6 +825,21 @@ void *GSudpRecvLoop(void *_args)
         {
             // data from physical nic, read it and display the IP header
             // requester
+            struct sockaddr_in *srcAddrPtr;
+            socklen_t src_len = sizeof(srcAddrPtr);
+            if ((nread = recvfrom(listenFd, buffer, BUFSIZE, 0, (struct sockaddr *)srcAddrPtr, &src_len)) < 0)
+            {
+                LOG(ERROR, "Read from nic error.\n");
+                goto quit;
+            }
+            else if (nread == 0)
+            {
+                // Do nothing.
+            }
+            // now buffer[] contains a full packet or frame
+            buffer[nread] = 0;
+            nic_count++;
+            /*
             recvLen = recvmsg(listenFd, &mhdr, 0);
             for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&mhdr); cmsg != NULL; cmsg = CMSG_NXTHDR(&mhdr, cmsg))
             {
@@ -764,13 +890,13 @@ void *GSudpRecvLoop(void *_args)
                 }
                 continue;
             }
+            */
 
             // remove kcp header and send data to host
             // sessPtr->input2Host(recvBuf, recvLen);
-            struct IntcpSeg *seg2host = (struct IntcpSeg *)recvBuf;
-            nwrite = write(tunFd, seg2host->data, seg2host->len);
-            if (nwrite < 0) {
-                LOG(ERROR, "write to listenFd error.\n");
+            if (GSrecvFunc(buffer, nread, tunFd) < 0)
+            {
+                LOG(ERROR, "send data to host error.\n");
                 goto quit;
             }
         }
@@ -781,7 +907,7 @@ quit:
     if (tunFd > 0)
         close(tunFd);
     printf("Read data from tunFd %d: %lu, from listenFd %d: %lu.\n",
-        tunFd, tun_count, listenFd, nic_count);
+           tunFd, tun_count, listenFd, nic_count);
     printf("quit!\n");
     return nullptr;
 }
