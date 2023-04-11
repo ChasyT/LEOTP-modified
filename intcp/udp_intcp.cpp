@@ -630,7 +630,7 @@ int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenF
         seg->ts = 0;
         // TODO: influenced by interest
         // sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
-        char sndbuftmp[INTCP_MSS];
+        char sndbuftmp[INTCP_MTU];
         memcpy(sndbuftmp, seg.get(), INTCP_OVERHEAD);
         memcpy(sndbuftmp + INTCP_OVERHEAD, seg->data, seg->len);
         // nwrite = write(listenFd, sndbuftmp, INTCP_OVERHEAD+seg->len);
@@ -639,8 +639,7 @@ int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenF
                         (struct sockaddr *)dstAddrPtr, AddrLen);
         if (nwrite == -1)
         {
-            printf("write return:%d, errno:%d\n", nwrite, errno);
-            LOG(ERROR, "write to listenFd error.\n");
+            LOG(ERROR, "write to listenFd error: %d.\n", errno);
             return tot;
         }
         sess->packetId += size;
@@ -705,7 +704,7 @@ int GSrecvFunc(char *data, int buflen, int tunFd)
             nwrite = write(tunFd, seg->data, seg->len);
             if (nwrite == -1)
             {
-                LOG(ERROR, "write to listenFd error.\n");
+                LOG(ERROR, "write to tunFd error: %d.\n", errno);
                 return -1;
             }
             tot += len;
@@ -801,8 +800,7 @@ void *GSudpRecvLoop(void *_args)
                 // if (ipheader->saddr != 0 && ipheader->daddr == inet_addr("10.0.100.2"))
                 if (ipheader->saddr != 0)
                 {
-                    // write the data to listen_fd
-                    printf("Read %d bytes from tunFd\n", nread);
+                    LOG(INFO, "Read %d bytes from tunFd\n", nread);
                     tun_count++;
                     // set the session
                     sessPtr = args->sessPtrGo;
@@ -837,6 +835,7 @@ void *GSudpRecvLoop(void *_args)
                 // Do nothing.
             }
             // now buffer[] contains a full packet or frame
+            LOG(INFO, "Read %d bytes from listenFd\n", nread);
             buffer[nread] = 0;
             nic_count++;
             /*
