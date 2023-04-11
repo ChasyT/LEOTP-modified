@@ -26,42 +26,33 @@ int chdirProgramDir(){
     return 0;
 }
 
-void startGSRequester(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
-        void *(*onNewSess)(void* _sessPtr),
-        const char* ipStrReq, const char* ipStrResp, uint16_t respPortH, int tunFd){
+void startGSnode(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
+        void *(*onNewSess)(void* _sessPtr), const char* ipStr, uint16_t PortH,
+        const char* ipStrOpp, uint16_t PortHOpp, int tunFd){
     int ret;
-    shared_ptr<IntcpSess> sessPtr(new IntcpSess(inet_addr(ipStrReq), inet_addr(ipStrResp), ntohs(respPortH), 
+    // requester
+    Quad quadBack(inet_addr(ipStr), PortH, inet_addr(ipStrOpp), PortHOpp);
+    shared_ptr<IntcpSess> sessPtrBack(new IntcpSess(quadBack, INTCP_ROLE_REQUESTER, 
             cachePtr, onNewSess));
-    //NOTE manually add to sessMapPtr
-    Quad quad(sessPtr->requesterAddr, sessPtr->responderAddr);
-    sessMapPtr->setValue(quad.chars, QUAD_STR_LEN, sessPtr);
+    sessMapPtr->setValue(quadBack.chars, QUAD_STR_LEN, sessPtrBack);
+    // responder
+    Quad quadGo(inet_addr(ipStrOpp), PortHOpp, inet_addr(ipStr), PortH);
+    shared_ptr<IntcpSess> sessPtrGo(new IntcpSess(quadGo, INTCP_ROLE_RESPONDER,
+            cachePtr, nullptr));
+    sessMapPtr->setValue(quadGo.chars, QUAD_STR_LEN, sessPtrGo);
 
     struct GSudpRecvLoopArgs args;
     args.sessMapPtr = sessMapPtr;
-    args.onNewSess = nullptr;
-    args.listenAddr = sessPtr->requesterAddr;
-    args.listenFd = sessPtr->socketFd_toResp;
+    args.onNewSess = onNewSess;
+    args.sessPtrBack = sessPtrBack;
+    args.sessPtrGo = sessPtrGo;
+    args.listenAddr = sessPtrBack->requesterAddr;
+    args.listenFd = sessPtrBack->socketFd_toResp;
     args.cachePtr = cachePtr;
     args.tunFd = tunFd;
     pthread_t listener;
     ret = pthread_create(&listener, NULL, &GSudpRecvLoop, &args);
-
-    pthread_join(listener, nullptr);
-}
-
-void startGSResponder(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
-        void *(*onNewSess)(void* _sessPtr), int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user),
-        const char* ipStr, uint16_t respPortH, int tunFd){
-    int ret;
-    struct GSudpRecvLoopArgs args;
-    args.sessMapPtr = sessMapPtr;
-    args.onNewSess = onNewSess;
-    args.listenAddr = toAddr(inet_addr(ipStr),htons(respPortH));
-    args.cachePtr = cachePtr;
-    args.onUnsatInt = onUnsatInt;
-    args.tunFd = tunFd;
-    pthread_t listener;
-    pthread_create(&listener, NULL, &GSudpRecvLoop, &args);
+    // GSudpRecvLoop(&args);
 
     pthread_join(listener, nullptr);
 }

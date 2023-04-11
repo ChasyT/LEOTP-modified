@@ -59,8 +59,8 @@ const IUINT32 INTCP_INT_RANGE_LIMIT = INTCP_MSS;  //   5*INTCP_MSS
 const IUINT32 INTCP_UPDATE_INTERVAL = 1; //Unit: ms//DEBUG for retransmission test
 const IUINT32 INTCP_DEADLINK = 8;
 
-const IUINT32 INTCP_CMD_INT = 80;         // cmd: interest 
-const IUINT32 INTCP_CMD_PUSH = 81;        // cmd: push data
+const IUINT8 INTCP_CMD_INT = 80;         // cmd: interest 
+const IUINT8 INTCP_CMD_PUSH = 81;        // cmd: push data
 
 
 // Retransmission
@@ -120,7 +120,7 @@ const float INTCP_SENDRATE_MAX = 300;
 //=====================================================================
 struct IntcpSeg
 {
-    IUINT32 cmd;    //need send,1B
+    IUINT8 cmd;    //need send,1B
     IINT16 wnd;    //need send,2B
     IUINT32 ts;        //need send,4B
     IUINT32 sn;        //need send,4B
@@ -134,7 +134,7 @@ struct IntcpSeg
     IUINT32 xmit; // send time count
     
     char data[1];    //need send
-};
+}__attribute__((packed));
 
 struct ByteRange
 {

@@ -23,6 +23,7 @@
 #define DEFAULT_MID_PORT 6000
 #define DEFAULT_CLIENT_PORT 7000
 #define REUSE_PORT_RANGE 1000
+#define BUFSIZE 2048
 
 using namespace std;
 
@@ -80,6 +81,9 @@ public:
     //midnode
     IntcpSess(Quad quad, Cache* _cachePtr,
         void *(*onNewSess)(void* _sessPtr));
+    //GSnode
+    IntcpSess(Quad quad, int _nodeRole, Cache *_cachePtr,
+        void *(*onNewSess)(void *_sessPtr));
     
     int inputUDP(char *recvBuf, int recvLen);
     int input2Host(char *recvBuf, int recvLen);
@@ -112,11 +116,16 @@ struct GSudpRecvLoopArgs
     ByteMap<shared_ptr<IntcpSess>> *sessMapPtr;
     void* (*onNewSess)(void*);
     int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user);
+    shared_ptr<IntcpSess> sessPtrBack;
+    shared_ptr<IntcpSess> sessPtrGo;
     struct sockaddr_in listenAddr;
     int tunFd=-1;
     int listenFd=-1;
     Cache* cachePtr;
 };
+
+int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenFd);
+int GSrecvFunc(char *data, int buflen, int tunFd);
 void * GSudpRecvLoop(void *_args);
 
 #endif
