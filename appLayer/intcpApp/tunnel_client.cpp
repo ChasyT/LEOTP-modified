@@ -20,7 +20,7 @@ int main(int argc,char** argv){
     strcpy(tun_name, "clienttun");
     tunFd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI);  /* tun interface */
 
-    system("ifconfig clienttun mtu 1472 up 10.0.0.1 netmask 255.255.255.0");
+    system("ifconfig clienttun mtu 1449 up 10.0.0.1 netmask 255.255.255.0");
     system("route del default");
     system("route add -host 10.0.100.1 gw 10.0.2.2 dev gs1_m1");
     system("route add default gw 10.0.0.2 clienttun");
