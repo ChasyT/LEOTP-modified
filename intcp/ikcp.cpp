@@ -1511,8 +1511,7 @@ int IntcpTransCB::input(char *data, int size)
                 }
             }
             updateCwnd(len);
-            /*
-            if (current - lastSendIntTs > hopSrtt * 0.9)
+            if (nodeRole != INTCP_ROLE_RESPONDER && current - lastSendIntTs > hopSrtt * 0.9)
             {
 #ifdef HBH_CC
                 outputInt(0, 0);
@@ -1520,7 +1519,6 @@ int IntcpTransCB::input(char *data, int size)
                 outputInt(0, 0, 0, 0);
 #endif
             }
-            */
             IUINT32 cf = _getUsec();
 #ifdef CUT_PAYLOAD
             bool foundDataHole = detectDataHole(rangeStart, rangeEnd);
