@@ -82,18 +82,16 @@ public:
     IntcpSess(Quad quad, Cache* _cachePtr,
         void *(*onNewSess)(void* _sessPtr));
     //GSnode
-    IntcpSess(Quad quad, int _nodeRole, Cache *_cachePtr,
-        void *(*onNewSess)(void *_sessPtr));
+    IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
+        void *(*onNewSess)(void *_sessPtr),int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user));
     
     int inputUDP(char *recvBuf, int recvLen);
-    int input2Host(char *recvBuf, int recvLen);
     int request(int rangeStart, int rangeEnd);
     int recvData(char *recvBuf, int maxBufSize, IUINT32 *startPtr, IUINT32 *endPtr);
     void insertData(const char *sendBuf, int start, int end);
 };
 void* TransUpdateLoop(void *args);
 int udpSend(const char* buf,int len, void* user, int dstRole);
-int send2host(const char *buf, int len, void* user);
 int fetchData(char *buf, IUINT32 start, IUINT32 end, void *user);
 shared_ptr<IntcpTransCB> createTransCB(const IntcpSess *sessPtr, int nodeRole, int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user));
 
@@ -125,7 +123,7 @@ struct GSudpRecvLoopArgs
 };
 
 int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenFd);
-int GSrecvFunc(char *data, int buflen, int tunFd);
+int GSrecvFunc(char *data, int buflen, shared_ptr<IntcpSess> sessGo, shared_ptr<IntcpSess> sessBack);
 void * GSudpRecvLoop(void *_args);
 
 #endif

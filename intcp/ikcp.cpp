@@ -11,13 +11,11 @@ using namespace std;
 IntcpTransCB::IntcpTransCB(
     void *_user,
     int (*_outputFunc)(const char *buf, int len, void *user, int dstRole),
-    int (*_output2Host)(const char *buf, int len, void *user),
     int (*_fetchDataFunc)(char *buf, IUINT32 start, IUINT32 end, void *user),
     int (*_onUnsatInt)(IUINT32 start, IUINT32 end, void *user),
     // bool _isUnreliable
     int _nodeRole) : user(_user),
                      outputFunc(_outputFunc),
-                     output2Host(_output2Host),
                      fetchDataFunc(_fetchDataFunc),
                      onUnsatInt(_onUnsatInt),
                      // isUnreliable(_isUnreliable),
@@ -156,7 +154,7 @@ int IntcpTransCB::recv(char *buffer, int maxBufSize, IUINT32 *startPtr, IUINT32 
     if (rcvQueue.empty())
         return -1;
 
-    if (nodeRole == INTCP_ROLE_MIDNODE)
+    if (nodeRole != INTCP_ROLE_RESPONDER)
     {
         shared_ptr<IntcpSeg> firstSeg = *rcvQueue.begin();
         if (firstSeg->rangeEnd - firstSeg->rangeStart != firstSeg->len)
@@ -1061,6 +1059,7 @@ void IntcpTransCB::parseData(shared_ptr<IntcpSeg> dataSeg, bool data_header)
 void IntcpTransCB::parseData(shared_ptr<IntcpSeg> dataSeg)
 #endif
 {
+    /*
     if (nodeRole == INTCP_ROLE_REQUESTER)
     {
 #ifdef CUT_PAYLOAD
@@ -1262,7 +1261,13 @@ void IntcpTransCB::parseData(shared_ptr<IntcpSeg> dataSeg)
             LOG(DEBUG, "useless data recved [%u,%u)", dataSeg->rangeStart, dataSeg->rangeEnd);
         }
     }
+    if (nodeRole == INTCP_ROLE_REQUESTER)
+    {
+
+    }
     else
+    */
+    if (nodeRole != INTCP_ROLE_REQUESTER)
     {
         shared_ptr<IntcpSeg> segToForward = createSeg(dataSeg->len);
         // TODO copy char[] pointer??
@@ -1277,11 +1282,12 @@ void IntcpTransCB::parseData(shared_ptr<IntcpSeg> dataSeg)
 #endif
 #else
         sndQueueBytes += segToForward->len;
-        rcvBuf.push_back(dataSeg);
-#endif
     }
-
-    moveToRcvQueue();
+    if (nodeRole != INTCP_ROLE_RESPONDER) {
+        rcvBuf.push_back(dataSeg);
+        moveToRcvQueue();
+    }
+#endif
 }
 
 // reordering in requester: queueing in order of interest
@@ -1292,9 +1298,10 @@ void IntcpTransCB::moveToRcvQueue()
     // TODO add rcvBufItrs logic
     while (!rcvBuf.empty())
     {
-        if (nodeRole == INTCP_ROLE_MIDNODE)
+        if (nodeRole != INTCP_ROLE_RESPONDER)
         {
             // LOG(DEBUG,"rq size %ld rw %u",rcvQueue.size(), INTCP_WND_RCV);
+            /*
             if (rcvQueue.size() < INTCP_WND_RCV)
             {
                 rcvQueue.splice(rcvQueue.end(), rcvBuf, rcvBuf.begin(), rcvBuf.end());
@@ -1303,6 +1310,8 @@ void IntcpTransCB::moveToRcvQueue()
             {
                 break;
             }
+            */
+            rcvQueue.splice(rcvQueue.end(), rcvBuf, rcvBuf.begin(), rcvBuf.end());
         }
         else
         {
@@ -1318,6 +1327,7 @@ void IntcpTransCB::moveToRcvQueue()
             }
         }
     }
+    /*
     if (nodeRole == INTCP_ROLE_REQUESTER)
     {
         while (!rcvBufItrs.empty() && rcvNxt >= rcvBufItrs.begin()->endByte)
@@ -1329,6 +1339,7 @@ void IntcpTransCB::moveToRcvQueue()
             rcvBufItrs.begin()->startByte = rcvNxt;
         }
     }
+    */
 }
 
 // for debug
@@ -1487,7 +1498,7 @@ int IntcpTransCB::input(char *data, int size)
 #else
                 recvedBytesThisHRTT += len;
 #endif
-                stat.recvedUDP += len;
+                if (nodeRole != INTCP_ROLE_RESPONDER) stat.recvedUDP += len;
                 if (lastThrpUpdateTs == 0)
                     lastThrpUpdateTs = current;
                 if (_itimediff(current, lastThrpUpdateTs) > hopSrtt)
@@ -1500,6 +1511,7 @@ int IntcpTransCB::input(char *data, int size)
                 }
             }
             updateCwnd(len);
+            /*
             if (current - lastSendIntTs > hopSrtt * 0.9)
             {
 #ifdef HBH_CC
@@ -1508,6 +1520,7 @@ int IntcpTransCB::input(char *data, int size)
                 outputInt(0, 0, 0, 0);
 #endif
             }
+            */
             IUINT32 cf = _getUsec();
 #ifdef CUT_PAYLOAD
             bool foundDataHole = detectDataHole(rangeStart, rangeEnd);
@@ -1577,94 +1590,6 @@ int IntcpTransCB::input(char *data, int size)
     return 0;
 }
 
-int IntcpTransCB::inputForHost(char *data, int size)
-{
-    if (data == NULL || (int)size < (int)INTCP_OVERHEAD)
-        return -1;
-
-    // when receiving udp packet, we use judgeDst() to get info from the
-    // first intcp seg, to decide which IntcpSess it should be inputed to.
-    // if multiple intcp segs are concatenated in this single udp packet,
-    // and they have different dst, there will be error.
-    // so, now we only allow one intcp seg per input().
-    // while (1) {
-    IUINT32 ts, sn, len;
-    IUINT32 rangeStart, rangeEnd; // intcp
-    IINT16 wnd;
-    IUINT8 cmd;
-    shared_ptr<IntcpSeg> seg;
-#ifdef CUT_PAYLOAD
-    bool data_header;
-#endif
-
-    char *dataOrg = data;
-    long sizeOrg = size;
-    while (1)
-    {
-        IUINT32 current = _getMillisec();
-        if (size < (int)INTCP_OVERHEAD)
-            break;
-        data = decode8u(data, &cmd);
-        data = decode16(data, &wnd);
-        data = decode32u(data, &ts);
-        data = decode32u(data, &sn);
-        data = decode32u(data, &len);
-        // if(len+INTCP_OVERHEAD<size){
-        //     LOG(WARN, "input size %d > seg size %d",size,len+INTCP_OVERHEAD);
-        // }
-        data = decode32u(data, &rangeStart);
-        data = decode32u(data, &rangeEnd);
-        size -= INTCP_OVERHEAD;
-
-        if ((long)size < (long)len || (int)len < 0)
-            return -2;
-
-        // must be data
-        if (cmd != INTCP_CMD_PUSH)
-            return -3;
-
-#ifdef CUT_PAYLOAD
-        bool data_header = (bool)(len == 0);
-#endif
-        seg = createSeg(len);
-        seg->cmd = cmd;
-        seg->wnd = wnd;
-        seg->ts = ts;
-        // seg->sn = sn;
-        seg->len = len;
-        seg->rangeStart = rangeStart;
-        seg->rangeEnd = rangeEnd;
-#ifdef CUT_PAYLOAD
-        if (data_header)
-        {
-            LOG(DEBUG, " recv header [%u,%u]", rangeStart, rangeEnd);
-        }
-        else if (rangeEnd - rangeStart != len)
-        {
-            LOG(DEBUG, "inconsistent data [%u,%u] len %u", rangeStart, rangeEnd, len);
-            break;
-            // continue;
-        }
-#else
-        if (rangeEnd - rangeStart != len)
-        {
-            LOG(DEBUG, "inconsistent data range: rangeStart %u rangeEnd %u len %u", rangeStart, rangeEnd, len);
-            break;
-            // continue;
-        }
-#endif
-        else
-        {
-            LOG(TRACE, "recv data %d [%d,%d), ts %u", sn, rangeStart, rangeEnd, _getMillisec());
-            memcpy(seg->data, data, len);
-            sndQueueForHost.push_back(seg);
-
-            data += len;
-            size -= len;
-        }
-    }
-    return 0;
-}
 //---------------------------------------------------------------------
 // flush
 //---------------------------------------------------------------------
@@ -2039,35 +1964,6 @@ void IntcpTransCB::flushData()
     }
 }
 
-// sndQueue -> send straightforward;
-void IntcpTransCB::flushDataForHost()
-{
-    char *sentEnd = tmpBufferForHost.get();
-    int sizeToSend = 0;
-
-    list<shared_ptr<IntcpSeg>>::iterator p, next;
-    shared_ptr<IntcpSeg> segPtr;
-    for (p = sndQueueForHost.begin(); p != sndQueueForHost.end(); p = next)
-    {
-        next = p;
-        next++;
-        segPtr = *p;
-
-        sizeToSend = (int)(sentEnd - tmpBufferForHost.get());
-        if (sizeToSend + (INTCP_OVERHEAD + segPtr->len) > INTCP_MTU)
-        {
-            // output(tmpBufferForHost.get(), sizeToSend, INTCP_ROLE_REQUESTER);
-            output2Host(tmpBufferForHost.get(), sizeToSend, user);
-            sentEnd = tmpBufferForHost.get();
-        }
-
-        sentEnd = encodeSeg(sentEnd, segPtr.get());
-        memcpy(sentEnd, segPtr->data, segPtr->len);
-        sentEnd += segPtr->len;
-        sndQueue.erase(p);
-    }
-}
-
 void IntcpTransCB::flush()
 {
     IUINT32 tmp = _getMillisec();
@@ -2087,10 +1983,6 @@ void IntcpTransCB::flush()
     {
         flushData();
     }
-    if (nodeRole == INTCP_ROLE_REQUESTER)
-    {
-        flushDataForHost();
-    }
     lastFlushTs = tmp;
 }
 
@@ -2102,6 +1994,7 @@ void IntcpTransCB::flush()
 void IntcpTransCB::update()
 {
     IUINT32 current = _getMillisec();
+    /*
     if (current - stat.lastPrintTs > 1000)
     {
         // DEBUG
@@ -2154,6 +2047,7 @@ void IntcpTransCB::update()
         }
         stat.reset();
     }
+    */
 
     if (updated == 0)
     {

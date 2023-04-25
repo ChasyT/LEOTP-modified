@@ -26,29 +26,75 @@ int chdirProgramDir(){
     return 0;
 }
 
+void *GSonNewSess(void* _sessPtr){
+    IntcpSess *sessPtr = (IntcpSess*)_sessPtr;
+    char recvBuf[INTCP_MSS];
+    IUINT32 start, end, nwrite;
+    while(1){
+        while (sessPtr->recvData(recvBuf, INTCP_MSS, &start, &end) == 0){
+            if (start >= end) {
+                LOG(DEBUG,"abnormal range: rangeStart %u rangeEnd %u length %u",start,end,end-start);
+            }
+            else {
+                // send to host
+                nwrite = write(sessPtr->tunFd_toHost, recvBuf, end-start);
+                if (nwrite == -1)
+                {
+                    LOG(ERROR, "write to tunFd error: %d.\n", errno);
+                }
+                LOG(INFO, "Send %d bytes to host.\n", nwrite);
+            }
+        }
+        usleep(1000);
+    }
+    return nullptr;
+}
+
+int GSprovideData(IUINT32 start, IUINT32 end, void *_sessPtr){
+    
+    LOG(TRACE,"insert [%d,%d)",start,end);
+    IntcpSess *sessPtr = (IntcpSess*)_sessPtr;
+    char *dataBuf = new char[end-start];
+    int pos =0;
+    memset(dataBuf,0,end-start);
+    while(1){
+        if(pos+INTCP_MSS*10>end-start)
+            break;
+        *((IUINT32 *)(dataBuf+pos)) = _getMillisec();
+        pos+=INTCP_MSS*10;
+    }
+    sessPtr->insertData(dataBuf,start,end);
+    delete dataBuf;
+    
+    return 0;
+}
+
 void startGSnode(Cache *cachePtr, ByteMap<shared_ptr<IntcpSess>> *sessMapPtr, 
-        void *(*onNewSess)(void* _sessPtr), const char* ipStr, uint16_t PortH,
+        const char* ipStr, uint16_t PortH,
         const char* ipStrOpp, uint16_t PortHOpp, int tunFd){
     int ret;
     // requester
     Quad quadBack(inet_addr(ipStr), PortH, inet_addr(ipStrOpp), PortHOpp);
-    shared_ptr<IntcpSess> sessPtrBack(new IntcpSess(quadBack, INTCP_ROLE_REQUESTER, 
-            cachePtr, onNewSess));
+    shared_ptr<IntcpSess> sessPtrBack(new IntcpSess(quadBack, cachePtr,
+            INTCP_ROLE_REQUESTER, GSonNewSess, nullptr));
+    sessPtrBack->tunFd_toHost = tunFd;
     sessMapPtr->setValue(quadBack.chars, QUAD_STR_LEN, sessPtrBack);
     // responder
     Quad quadGo(inet_addr(ipStrOpp), PortHOpp, inet_addr(ipStr), PortH);
-    shared_ptr<IntcpSess> sessPtrGo(new IntcpSess(quadGo, INTCP_ROLE_RESPONDER,
-            cachePtr, nullptr));
+    shared_ptr<IntcpSess> sessPtrGo(new IntcpSess(quadGo, cachePtr,
+            INTCP_ROLE_RESPONDER, nullptr, GSprovideData));
+    sessPtrGo->socketFd_toReq = sessPtrBack->socketFd_toResp;
     sessMapPtr->setValue(quadGo.chars, QUAD_STR_LEN, sessPtrGo);
 
     struct GSudpRecvLoopArgs args;
     args.sessMapPtr = sessMapPtr;
-    args.onNewSess = onNewSess;
+    args.onNewSess = GSonNewSess;
     args.sessPtrBack = sessPtrBack;
     args.sessPtrGo = sessPtrGo;
     args.listenAddr = sessPtrBack->requesterAddr;
     args.listenFd = sessPtrBack->socketFd_toResp;
     args.cachePtr = cachePtr;
+    args.onUnsatInt = GSprovideData;
     args.tunFd = tunFd;
     pthread_t listener;
     ret = pthread_create(&listener, NULL, &GSudpRecvLoop, &args);
