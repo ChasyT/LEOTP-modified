@@ -10,10 +10,6 @@
 #undef LOG_LEVEL
 #define LOG_LEVEL DEBUG
 
-void *onNewSess(void* _sessPtr){
-    return nullptr;
-}
-
 int main(int argc,char** argv){
     char tun_name[IFNAMSIZ];
     int tunFd;
@@ -30,7 +26,7 @@ int main(int argc,char** argv){
     ByteMap<shared_ptr<IntcpSess>> sessMap;
     LOG(INFO,"entering intcptc\n");
     fflush(stdout);
-    startGSnode(&cache, &sessMap, onNewSess,
-        "10.0.1.2", DEFAULT_CLIENT_PORT, "10.0.100.1", DEFAULT_SERVER_PORT, tunFd);
+    startGSnode(&cache, &sessMap, "10.0.1.2", DEFAULT_CLIENT_PORT,
+                "10.0.100.1", DEFAULT_SERVER_PORT, tunFd);
     return 0;
 }
