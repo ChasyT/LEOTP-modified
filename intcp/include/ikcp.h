@@ -9,7 +9,7 @@
 #ifndef __INTCP_H__
 #define __INTCP_H__
 
-//#define CUT_PAYLOAD
+#define CUT_PAYLOAD
 
 #define USE_CACHE
 #define HBH_CC

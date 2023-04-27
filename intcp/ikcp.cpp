@@ -1,6 +1,6 @@
 #include "./include/ikcp.h"
 #undef LOG_LEVEL
-#define LOG_LEVEL SILENT // SILENT//
+#define LOG_LEVEL DEBUG // SILENT//
 
 #include <iostream>
 using namespace std;
@@ -544,7 +544,7 @@ void IntcpTransCB::parseInt(IUINT32 rangeStart, IUINT32 rangeEnd, IUINT16 wnd, I
             ir.endByte = rangeEnd;
             pendingInts.push_back(ir);
             LOG(TRACE, "unsat [%d,%d)", sentEnd, rangeEnd);
-            onUnsatInt(sentEnd, rangeEnd, user);
+            //onUnsatInt(sentEnd, rangeEnd, user);
         }
         else if (nodeRole == INTCP_ROLE_REQUESTER)
         {
@@ -1276,18 +1276,29 @@ void IntcpTransCB::parseData(shared_ptr<IntcpSeg> dataSeg)
         sndQueue.push_back(segToForward);
 #ifdef CUT_PAYLOAD
         sndQueueBytes += (INTCP_OVERHEAD + segToForward->len);
-#ifdef USE_CACHE
-        if (!data_header)
-            rcvBuf.push_back(dataSeg);
-#endif
 #else
         sndQueueBytes += segToForward->len;
-    }
-    if (nodeRole != INTCP_ROLE_RESPONDER) {
-        rcvBuf.push_back(dataSeg);
-        moveToRcvQueue();
-    }
+    
 #endif
+    }
+
+
+#ifdef CUT_PAYLOAD
+    if (!data_header)
+#else
+    if(true)
+#endif
+    {
+#ifdef USE_CACHE
+        if(true)
+#else
+        if(nodeRole == INTCP_ROLE_REQUESTER)    //if cache is not enabled, only receive in requester
+#endif
+        {
+            rcvBuf.push_back(dataSeg);
+            moveToRcvQueue();
+        }
+    }
 }
 
 // reordering in requester: queueing in order of interest
@@ -1298,7 +1309,8 @@ void IntcpTransCB::moveToRcvQueue()
     // TODO add rcvBufItrs logic
     while (!rcvBuf.empty())
     {
-        if (nodeRole != INTCP_ROLE_RESPONDER)
+        // move to rcvqueue directly
+        if (nodeRole != INTCP_ROLE_RESPONDER)   //  ?
         {
             // LOG(DEBUG,"rq size %ld rw %u",rcvQueue.size(), INTCP_WND_RCV);
             /*
@@ -1313,6 +1325,7 @@ void IntcpTransCB::moveToRcvQueue()
             */
             rcvQueue.splice(rcvQueue.end(), rcvBuf, rcvBuf.begin(), rcvBuf.end());
         }
+        // move to rcvqueue when sequence numbers are in-order
         else
         {
             shared_ptr<IntcpSeg> seg = *rcvBuf.begin();
@@ -1412,7 +1425,7 @@ int IntcpTransCB::input(char *data, int size)
             }
 #endif
             if (nodeRole == INTCP_ROLE_RESPONDER)
-                LOG(TRACE, "%u recv int %u [%u,%u) %u rSR %.1f",
+                LOG(DEBUG, "%u recv int %u [%u,%u) %u rSR %.1f",
                     _getMillisec(), sn, rangeStart, rangeEnd, rangeEnd - rangeStart, rmtSendRate);
             if (!(rangeStart == 0 && rangeEnd == 0))
             {
@@ -1855,6 +1868,7 @@ void IntcpTransCB::flushData()
     if (lastFlushTs != 0)
     {
         flushIntv = current - lastFlushTs;
+        LOG(TRACE,"flushIntv = %d ms", flushIntv);
     }
 
     // TODO CC -- cwnd/sendingRate; design token bucket
@@ -1992,7 +2006,7 @@ void IntcpTransCB::flush()
 void IntcpTransCB::update()
 {
     IUINT32 current = _getMillisec();
-    /*
+    
     if (current - stat.lastPrintTs > 1000)
     {
         // DEBUG
@@ -2001,7 +2015,7 @@ void IntcpTransCB::update()
         rcvBuf.clear();
         rcvBufItrs.clear();
         //}
-
+        /*
         if (nodeRole == INTCP_ROLE_REQUESTER)
         {
             LOG(SILENT, "%u. %4d %d C %.1f ↑%.1f ↓%.1f+%.2f iQ %ld iB %d rB %ld T %d D %d Hthrp %.2f",
@@ -2032,6 +2046,7 @@ void IntcpTransCB::update()
                 thrpLastPeriod);
             fflush(stdout);
         }
+        */
         if (nodeRole != INTCP_ROLE_REQUESTER)
         {
             LOG(SILENT, "%4d r↑%.1f sent %.1f sQ %d I %d",
@@ -2045,7 +2060,7 @@ void IntcpTransCB::update()
         }
         stat.reset();
     }
-    */
+    
 
     if (updated == 0)
     {
@@ -2149,7 +2164,7 @@ IINT16 IntcpTransCB::getDataSendRate()
     }
     rate = min(rate, INTCP_SENDRATE_MAX);
     // DEBUG
-    // return IINT16(18*100);
+    //return IINT16(40*100);
     return IINT16(rate * 100);
 }
 // deviation of sendQueueBytes - INTCP_SNDQ_MAX

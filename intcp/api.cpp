@@ -42,7 +42,7 @@ void *GSonNewSess(void* _sessPtr){
                 {
                     LOG(ERROR, "write to tunFd error: %d.\n", errno);
                 }
-                LOG(INFO, "Send %d bytes to host.\n", nwrite);
+                LOG(TRACE, "Send %d bytes to host.\n", nwrite);
             }
         }
         usleep(1000);

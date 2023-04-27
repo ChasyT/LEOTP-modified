@@ -774,7 +774,7 @@ void *GSudpRecvLoop(void *_args)
                 // if (ipheader->saddr != 0 && ipheader->daddr == inet_addr("10.0.100.2"))
                 if (ipheader->saddr != 0)
                 {
-                    LOG(INFO, "Read %d bytes from tunFd\n", nread);
+                    LOG(TRACE, "Read %d bytes from tunFd\n", nread);
                     tun_count++;
                     // set the session
                     sessPtr = args->sessPtrGo;
@@ -809,7 +809,7 @@ void *GSudpRecvLoop(void *_args)
                 // Do nothing.
             }
             // now buffer[] contains a full packet or frame
-            LOG(INFO, "Read %d bytes from listenFd\n", nread);
+            LOG(TRACE, "Read %d bytes from listenFd\n", nread);
             buffer[nread] = 0;
             nic_count++;
 
