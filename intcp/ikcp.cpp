@@ -819,7 +819,7 @@ bool IntcpTransCB::detectDataHole(IUINT32 rangeStart, IUINT32 rangeEnd)
             return false;
         }
         insertDataHole(dataNextRangeStart, rangeStart);
-        if (nodeRole == INTCP_ROLE_MIDNODE)
+        if (nodeRole != INTCP_ROLE_RESPONDER)
         {
             sendDataHeader(dataNextRangeStart, rangeStart);
         }
@@ -1425,7 +1425,7 @@ int IntcpTransCB::input(char *data, int size)
             }
 #endif
             if (nodeRole == INTCP_ROLE_RESPONDER)
-                LOG(DEBUG, "%u recv int %u [%u,%u) %u rSR %.1f",
+                LOG(TRACE, "%u recv int %u [%u,%u) %u rSR %.1f",
                     _getMillisec(), sn, rangeStart, rangeEnd, rangeEnd - rangeStart, rmtSendRate);
             if (!(rangeStart == 0 && rangeEnd == 0))
             {
@@ -2049,13 +2049,12 @@ void IntcpTransCB::update()
         */
         if (nodeRole != INTCP_ROLE_REQUESTER)
         {
-            LOG(SILENT, "%4d r↑%.1f sent %.1f sQ %d I %d",
+            LOG(SILENT, "%4d r↑%.1f sent %.1f sQ %d",
                 // stat.ssid,
                 (current - stat.startTs) / 1000,
                 rmtSendRate,
                 bytesToMbit(stat.sentINTCP) * 1000 / (current - stat.lastPrintTs),
-                sndQueueBytes / INTCP_MSS,
-                stat.cntIntHole);
+                sndQueueBytes / INTCP_MSS);
             fflush(stdout);
         }
         stat.reset();

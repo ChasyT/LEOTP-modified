@@ -225,7 +225,7 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr,
 // this is for [GSnode]
 // this is called when receiving a new Quad
 IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
-                     void *(*onNewSess)(void *_sessPtr), int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user)): 
+                     void *(*onNewSess)(void *_sessPtr)): 
                      nodeRole(_nodeRole), cachePtr(_cachePtr)
 {
     packetId = rand() % 100;
@@ -239,7 +239,7 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
 
     memcpy(nameChars, quad.chars, QUAD_STR_LEN);
     lock.lock();
-    transCB = createTransCB(this, nodeRole, onUnsatInt);
+    transCB = createTransCB(this, nodeRole, nullptr);
     lock.unlock();
     pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
     if (onNewSess) pthread_create(&onNewSessThread, NULL, onNewSess, this);

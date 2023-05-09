@@ -83,7 +83,7 @@ public:
         void *(*onNewSess)(void* _sessPtr));
     //GSnode
     IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
-        void *(*onNewSess)(void *_sessPtr),int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user));
+        void *(*onNewSess)(void *_sessPtr));
     
     int inputUDP(char *recvBuf, int recvLen);
     int request(int rangeStart, int rangeEnd);

@@ -87,7 +87,7 @@ def getTestParamSet(tpsetName):
     if tpsetName == "static_test":    #retran test
         tpSet = TestParamSet(tpsetName,
                 gen_linear_topo(1),
-                LinksParam(DefaultLP.set(bw=40,loss=0,rtt=10), 
+                LinksParam(DefaultLP.set(bw=40,loss=1,rtt=10), 
                     {
                     'gs1_m1':{'rtt':10},#'varBw':6,'varIntv':5
                     'm1_gs2':{'rtt':10},
