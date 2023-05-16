@@ -89,29 +89,20 @@ def getTestParamSet(tpsetName):
                 gen_linear_topo(1),
                 LinksParam(DefaultLP.set(bw=40,loss=1,rtt=10), 
                     {
-                    'gs1_m1':{'rtt':10},#'varBw':6,'varIntv':5
-                    'm1_gs2':{'rtt':10},
+                        'h1_gs1':{'loss':0},
+                        'gs2_h2':{'loss':0}
                     }),
-                DefaultAP.set(sendTime=30,test_type="throughputTest"),   #analyse_callback="cdf"
-                keyX = 'gs1_m1.varBw',
-                keysCurveDiff=['protocol','midCC','e2eCC'])
+                DefaultAP.set(sendTime=60,test_type="throughputTest",protocol='TCP'),   #analyse_callback="cdf"
+                keyX = 'defaultLP.loss',
+                keysCurveDiff=['midCC','e2eCC'])
         tpSet.add(
                 {
+                    'defaultLP.loss':[0,0.1,0.5,1],
+                    'e2eCC':['cubic','bbr']
                 },
                 {
-                #'udt_bbr_no_ack_delay':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_bbr_ack_delay_2s':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_bbr_ack_delay_1s':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_bbr_ack_delay_1s_square':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_bbr_ack_delay_0.2s_square':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                'udt_bbr_ack_delay_0.5s_square':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_bbr_ack_delay_0.5s':{'midCC':'nopep','protocol':'udt'}, # add sin ack delay
-                #'udt_2':{'midCC':'nopep','protocol':'udt'},
-                #'in_pep':{'midCC':'pep','protocol':'INTCP'},
-                #'bbr':{'midCC':'nopep','e2eCC':'bbr','protocol':'TCP'},
-                #'cubic':{'midCC':'nopep','e2eCC':'cubic','protocol':'TCP'},
-                #'pcc':{'midCC':'nopep','e2eCC':'pcc','protocol':'TCP'}
-                #'westwood':{'midCC':'nopep','e2eCC':'westwood','protocol':'TCP'}
+                    'notunnel':{'midCC':'nopep'}, # add sin ack delay
+                    'tunnel':{'midCC':'pep'}, # add sin ack delay
                 })
 
     if tpsetName == "large_hop_num":    #retran test

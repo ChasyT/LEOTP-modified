@@ -73,6 +73,7 @@ def kill_pep_processes(mn,testParam):
 
 def start_midnode_processes(mn,testParam,logPath,useTCP,pep_nodelay=0):
     if testParam.appParam.midCC != 'nopep':
+        '''
         if useTCP:      # tcp => open pepsal on gs1 and gs2 
             proxy_nodes =  ['gs1','gs2']
             proxy_nodes += ['m%d'%(i+1) for i in range(testParam.topoParam.numMidNode)]
@@ -105,6 +106,11 @@ def start_midnode_processes(mn,testParam,logPath,useTCP,pep_nodelay=0):
                     time.sleep(0.1)
                 #if testParam.appParam.dynamic_intv > total_midnodes:
                 #    time.sleep(testParam.appParam.dynamic_intv-total_midnodes)  #avoid the first link change
+        '''
+        atomic(mn.getNodeByName('gs1').cmd)('../appLayer/intcpApp/intcptc >/dev/null 2>&1 &')
+        time.sleep(0.1)
+        atomic(mn.getNodeByName('gs2').cmd)('../appLayer/intcpApp/intcpts >/dev/null 2>&1 &')
+        time.sleep(0.1)
     else:
         '''
         for node in ['m%d'%(10*i+9) for i in range(1)]:
@@ -135,7 +141,6 @@ def ThroughputTest(mn,testParam,logPath):
                 atomic(mn.getNodeByName('h1').cmd)('echo -e "\nreceive packets before test:\c" >> %s'%(logFilePath))
                 atomic(mn.getNodeByName('h1').cmd)('cat /sys/class/net/h1_gs1/statistics/rx_packets >> %s'%(logFilePath))
         if useTCP:      #only support e2e TCP1
-            #print("2")
             atomic(mn.getNodeByName('h1').cmd)('iperf3 -s -f k -i 1 --logfile %s &'%logFilePath)
             time.sleep(1)
             atomic(mn.getNodeByName('h2').cmd)('iperf3 -c 10.0.1.1 -f k -C %s -t %d &'%(testParam.appParam.e2eCC,testParam.appParam.sendTime) )
