@@ -819,7 +819,7 @@ bool IntcpTransCB::detectDataHole(IUINT32 rangeStart, IUINT32 rangeEnd)
             return false;
         }
         insertDataHole(dataNextRangeStart, rangeStart);
-        if (nodeRole != INTCP_ROLE_RESPONDER)
+        if (nodeRole == INTCP_ROLE_MIDNODE)
         {
             sendDataHeader(dataNextRangeStart, rangeStart);
         }
@@ -1310,7 +1310,7 @@ void IntcpTransCB::moveToRcvQueue()
     while (!rcvBuf.empty())
     {
         // move to rcvqueue directly
-        if (nodeRole != INTCP_ROLE_RESPONDER)   //  ?
+        if (nodeRole == INTCP_ROLE_MIDNODE)
         {
             // LOG(DEBUG,"rq size %ld rw %u",rcvQueue.size(), INTCP_WND_RCV);
             /*
@@ -1328,14 +1328,36 @@ void IntcpTransCB::moveToRcvQueue()
         // move to rcvqueue when sequence numbers are in-order
         else
         {
-            shared_ptr<IntcpSeg> seg = *rcvBuf.begin();
-            if (seg->rangeStart == rcvNxt && rcvQueue.size() < INTCP_WND_RCV)
-            {
-                rcvNxt = seg->rangeEnd;
-                rcvQueue.splice(rcvQueue.end(), rcvBuf, rcvBuf.begin());
+            shared_ptr<IntcpSeg> segBegin = *rcvBuf.begin();
+            shared_ptr<IntcpSeg> segEnd = *(--rcvBuf.end());
+            if (rcvQueue.size() < INTCP_WND_RCV) {
+                if (rcvNxt == 0 || rcvNxt == segBegin->rangeStart)
+                {
+                    rcvNxt = segBegin->rangeEnd;
+                    rcvQueue.splice(rcvQueue.end(), rcvBuf, rcvBuf.begin());
+                }
+                else if (rcvNxt == segEnd->rangeStart)
+                {
+                    rcvNxt = segEnd->rangeEnd;
+                    rcvQueue.splice(rcvQueue.end(), rcvBuf, --rcvBuf.end());
+                }
+                else if (rcvNxt > segBegin->rangeStart)
+                {
+                    rcvBuf.erase(rcvBuf.begin());
+                }
+                else if (rcvNxt > segEnd->rangeStart)
+                {
+                    rcvBuf.erase(--rcvBuf.end());
+                }
+                else
+                {
+                    // TBD
+                    LOG(DEBUG, "rcvNxt: %d, segBegin->rangeStart: %d, segEnd->rangeStart %d\n", 
+                        rcvNxt, segBegin->rangeStart, segEnd->rangeStart);
+                    break;
+                }
             }
-            else
-            {
+            else {
                 break;
             }
         }
@@ -2012,6 +2034,7 @@ void IntcpTransCB::update()
         // DEBUG
         // int t = (current-stat.startTs)/1000%5;
         // if(t<2 && current-stat.startTs>5000){
+        rcvNxt = 0;
         rcvBuf.clear();
         rcvBufItrs.clear();
         //}
