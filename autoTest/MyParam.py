@@ -92,7 +92,7 @@ def getTestParamSet(tpsetName):
                         'h1_gs1':{'loss':0},
                         'gs2_h2':{'loss':0}
                     }),
-                DefaultAP.set(sendTime=60,test_type="throughputTest",protocol='TCP'),   #analyse_callback="cdf"
+                DefaultAP.set(sendTime=60,test_type="throughputWithOwd",protocol='TCP',analyse_callback="lineChart_with_loss"),   #analyse_callback="cdf"
                 keyX = 'defaultLP.loss',
                 keysCurveDiff=['midCC','e2eCC'])
         tpSet.add(

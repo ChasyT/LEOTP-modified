@@ -301,24 +301,19 @@ def ThrpWithOwdTest(mn, testParam, logPath):
     else:
         mode =2
 
-    atomic(mn.getNodeByName('h2').cmd)('python3 ./sniff.py -t %d  > %s &'%(mode,senderLogFilePath))
-    atomic(mn.getNodeByName('h1').cmd)('python3 ./sniff.py -t %d  > %s &'%(mode,receiverLogFilePath))
-    #atomic(mn.getNodeByName('h2').cmd)('python3 ./sniff.py -t %d -i %s > %s &'%(useTCP,"h2_gs2",senderLogFilePath))
-    #atomic(mn.getNodeByName('h1').cmd)('python3 ./sniff.py -t %d -i %s > %s &'%(useTCP,"h1_gs1",receiverLogFilePath))
-    
+    #atomic(mn.getNodeByName('h2').cmd)('python3 ./sniff.py -t %d  > %s &'%(mode,senderLogFilePath))
+    #atomic(mn.getNodeByName('h1').cmd)('python3 ./sniff.py -t %d  > %s &'%(mode,receiverLogFilePath))
+    atomic(mn.getNodeByName('h2').cmd)('python3 ./sniff.py -t %d -i %s > %s &'%(useTCP,"h2_gs2",senderLogFilePath))
+    atomic(mn.getNodeByName('h1').cmd)('python3 ./sniff.py -t %d -i %s > %s &'%(useTCP,"h1_gs1",receiverLogFilePath))
+
 
     time.sleep(1)
 
     if useTCP:
-        if testParam.appParam.midCC=="nopep":#testParam.appParam.midCC=="nopep"
-            atomic(mn.getNodeByName('h1').cmd)('iperf3 -s -f k -i 1 --logfile %s &'%(thrpLogFilePath))
-            time.sleep(1)
-            #atomic(mn.getNodeByName('h2').cmd)('iperf3 -c 10.0.1.1 -f k -C %s -t %d &'%(testParam.appParam.e2eCC,testParam.appParam.sendTime) )
-            atomic(mn.getNodeByName('h2').cmd)('iperf3 -c 10.0.1.1 -f k -C %s -t %d --logfile %s &'%(testParam.appParam.e2eCC,testParam.appParam.sendTime,senderSummaryFilePath) )
-        else:
-            atomic(mn.getNodeByName('h1').cmd)('python3 ../appLayer/tcpApp/server.py > %s &'%(thrpLogFilePath))
-            time.sleep(1)
-            atomic(mn.getNodeByName('h2').cmd)('python3 ../appLayer/tcpApp/client.py -C %s -f 1 >/dev/null 2>&1 &'%(testParam.appParam.e2eCC,))
+        atomic(mn.getNodeByName('h1').cmd)('iperf3 -s -f k -i 1 --logfile %s &'%(thrpLogFilePath))
+        time.sleep(1)
+        #atomic(mn.getNodeByName('h2').cmd)('iperf3 -c 10.0.1.1 -f k -C %s -t %d &'%(testParam.appParam.e2eCC,testParam.appParam.sendTime) )
+        atomic(mn.getNodeByName('h2').cmd)('iperf3 -c 10.0.1.1 -f k -C %s -t %d --logfile %s &'%(testParam.appParam.e2eCC,testParam.appParam.sendTime,senderSummaryFilePath) )
     else:
         atomic(mn.getNodeByName('h2').cmd)('../appLayer/intcpApp/intcps >/dev/null 2>&1 &')
         time.sleep(1)

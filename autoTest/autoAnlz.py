@@ -609,13 +609,13 @@ def plotOneFig(resultPath, result, keyX, groups, title, legends=[],test_type="th
     elif test_type=="throughputWithOwd":
         if metric=="thrp":
             #print("thrp")
-            plt.ylim((0,10))
+            plt.ylim((0,40))
         elif metric=="owd":
             #print("owd")
-            plt.ylim((0,200))
+            plt.ylim((0,1000))
         else:
             #print("loss")
-            plt.ylim((0,5))
+            plt.ylim((0,10))
     else:
         pass
     

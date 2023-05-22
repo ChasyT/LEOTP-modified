@@ -190,7 +190,7 @@ int IntcpTransCB::recv(char *buffer, int maxBufSize, IUINT32 *startPtr, IUINT32 
         }
     }
 
-    moveToRcvQueue();
+    // moveToRcvQueue();
 
     return 0;
 }
@@ -1310,7 +1310,11 @@ void IntcpTransCB::moveToRcvQueue()
     while (!rcvBuf.empty())
     {
         // move to rcvqueue directly
+#ifdef REORDER
         if (nodeRole == INTCP_ROLE_MIDNODE)
+#else
+        if (True)
+#endif
         {
             // LOG(DEBUG,"rq size %ld rw %u",rcvQueue.size(), INTCP_WND_RCV);
             /*

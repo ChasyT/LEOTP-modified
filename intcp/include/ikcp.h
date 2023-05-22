@@ -14,6 +14,7 @@
 #define USE_CACHE
 #define HBH_CC
 //#define USE_PIT
+//#define REORDER
 
 #include <assert.h>
 #include <stdarg.h>
