@@ -1,0 +1,16 @@
+defaultLP.loss_0_e2eCC_cubic_notunnel   	38.134
+defaultLP.loss_0_e2eCC_cubic_tunnel   	35.074
+defaultLP.loss_0_e2eCC_bbr_notunnel   	37.319
+defaultLP.loss_0_e2eCC_bbr_tunnel   	34.057
+defaultLP.loss_0.1_e2eCC_cubic_notunnel   	9.516
+defaultLP.loss_0.1_e2eCC_cubic_tunnel   	30.314
+defaultLP.loss_0.1_e2eCC_bbr_notunnel   	37.249
+defaultLP.loss_0.1_e2eCC_bbr_tunnel   	29.447
+defaultLP.loss_0.5_e2eCC_cubic_notunnel   	3.656
+defaultLP.loss_0.5_e2eCC_cubic_tunnel   	17.870
+defaultLP.loss_0.5_e2eCC_bbr_notunnel   	36.911
+defaultLP.loss_0.5_e2eCC_bbr_tunnel   	23.903
+defaultLP.loss_1_e2eCC_cubic_notunnel   	2.318
+defaultLP.loss_1_e2eCC_cubic_tunnel   	11.557
+defaultLP.loss_1_e2eCC_bbr_notunnel   	36.442
+defaultLP.loss_1_e2eCC_bbr_tunnel   	13.505

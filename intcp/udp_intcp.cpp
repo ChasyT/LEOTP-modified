@@ -155,6 +155,7 @@ IntcpSess::IntcpSess(in_addr_t reqAddrIP, in_addr_t respAddrIP,
                      void *(*onNewSess)(void *_sessPtr)) : nodeRole(INTCP_ROLE_REQUESTER),
                                                            cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     uint16_t reqAddrPort;
     socketFd_toResp = createSocket(reqAddrIP, htons(DEFAULT_CLIENT_PORT), false, &reqAddrPort);
     if (socketFd_toResp == -1)
@@ -172,8 +173,8 @@ IntcpSess::IntcpSess(in_addr_t reqAddrIP, in_addr_t respAddrIP,
     lock.lock();
     transCB = createTransCB(this, nodeRole, nullptr);
     lock.unlock();
-    pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
-    pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    // pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    // pthread_create(&onNewSessThread, NULL, onNewSess, this);
     return;
 }
 
@@ -183,6 +184,7 @@ IntcpSess::IntcpSess(Quad quad, int listenFd, Cache *_cachePtr,
                      void *(*onNewSess)(void *_sessPtr), int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user)) : nodeRole(INTCP_ROLE_RESPONDER),
                                                                                                                       cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     requesterAddr = quad.getReqAddr();
     responderAddr = quad.getRespAddr();
 
@@ -193,8 +195,8 @@ IntcpSess::IntcpSess(Quad quad, int listenFd, Cache *_cachePtr,
     lock.lock();
     transCB = createTransCB(this, nodeRole, onUnsatInt);
     lock.unlock();
-    pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
-    pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    // pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    // pthread_create(&onNewSessThread, NULL, onNewSess, this);
     return;
 }
 
@@ -204,6 +206,7 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr,
                      void *(*onNewSess)(void *_sessPtr)) : nodeRole(INTCP_ROLE_MIDNODE),
                                                            cachePtr(_cachePtr)
 {
+    packetId = rand() % 100;
     requesterAddr = quad.getReqAddr();
     responderAddr = quad.getRespAddr();
 
@@ -216,6 +219,30 @@ IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr,
     lock.unlock();
     pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
     pthread_create(&onNewSessThread, NULL, onNewSess, this);
+    return;
+}
+
+// this is for [GSnode]
+// this is called when receiving a new Quad
+IntcpSess::IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
+                     void *(*onNewSess)(void *_sessPtr)): 
+                     nodeRole(_nodeRole), cachePtr(_cachePtr)
+{
+    packetId = rand() % 100;
+    requesterAddr = quad.getReqAddr();
+    responderAddr = quad.getRespAddr();
+    socketFd_toReq = -1;
+    socketFd_toResp = -1;
+
+    if (nodeRole == INTCP_ROLE_REQUESTER)
+        socketFd_toResp = createSocket(requesterAddr.sin_addr.s_addr, requesterAddr.sin_port, true, nullptr);
+
+    memcpy(nameChars, quad.chars, QUAD_STR_LEN);
+    lock.lock();
+    transCB = createTransCB(this, nodeRole, nullptr);
+    lock.unlock();
+    pthread_create(&transUpdaterThread, NULL, TransUpdateLoop, this);
+    if (onNewSess) pthread_create(&onNewSessThread, NULL, onNewSess, this);
     return;
 }
 
@@ -241,6 +268,7 @@ int IntcpSess::inputUDP(char *recvBuf, int recvLen)
     sleep(0);
     return ret;
 }
+
 
 int IntcpSess::request(int rangeStart, int rangeEnd)
 {
@@ -531,26 +559,149 @@ void *udpRecvLoop(void *_args)
     return nullptr;
 }
 
-void * GSudpRecvLoop(void *_args)
+int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenFd)
+{
+    int len = buflen, tot = 0;
+    char *pt = buffer;
+    while (len > 0)
+    {
+        int size = len > (int)INTCP_MSS ? (int)INTCP_MSS : len;
+        shared_ptr<IntcpSeg> seg = IntcpTransCB::createSeg(size);
+        assert(seg);
+        if (seg == NULL)
+        {
+            printf("create seg error.\n");
+            return -1;
+        }
+        if (pt && len > 0)
+        {
+            // LOG(DEBUG,"memcpy size %d",size);
+            memcpy(seg->data, pt, size);
+        }
+        seg->cmd = INTCP_CMD_PUSH;
+        seg->len = size;
+        seg->rangeStart = sess->packetId;
+        seg->rangeEnd = sess->packetId + size;
+        seg->wnd = 0;
+        seg->ts = 0;
+        // TODO: influenced by interest
+        // sessPtr->inputUDP((char *)segbuf, size + INTCP_OVERHEAD);
+        char sndbuftmp[INTCP_MTU];
+        memcpy(sndbuftmp, seg.get(), INTCP_OVERHEAD);
+        memcpy(sndbuftmp+INTCP_OVERHEAD, seg->data, seg->len);
+        // insert into cache
+        sess->cachePtr->insert(sess->nameChars, seg->rangeStart, seg->rangeEnd, sndbuftmp+INTCP_OVERHEAD);
+        // send
+        sess->inputUDP(sndbuftmp, INTCP_OVERHEAD+size);
+        /*
+        struct sockaddr_in *dstAddrPtr = &sess->requesterAddr;
+        nwrite = sendto(listenFd, sndbuftmp, INTCP_OVERHEAD + seg->len, 0,
+                        (struct sockaddr *)dstAddrPtr, AddrLen);
+        if (nwrite == -1)
+        {
+            LOG(ERROR, "write to listenFd error: %d.\n", errno);
+            return tot;
+        }
+        */
+        sess->packetId += size;
+        pt += size;
+        len -= size;
+        // tot += nwrite;
+        tot += size;
+    }
+    return tot;
+}
+
+int GSrecvFunc(char *data, int buflen, shared_ptr<IntcpSess> sessGo, shared_ptr<IntcpSess> sessBack)
+{
+    int tot = 0, nwrite;
+    IUINT32 ts, sn, len;
+    IUINT32 rangeStart, rangeEnd; // intcp
+    IINT16 wnd;
+    IUINT8 cmd;
+    shared_ptr<IntcpSeg> seg;
+    char *dataOrg = data;
+    int size = buflen;
+    while (1)
+    {
+        if (size < (int)INTCP_OVERHEAD)
+            break;
+        dataOrg = data;
+        data = decode8u(data, &cmd);
+        data = decode16(data, &wnd);
+        data = decode32u(data, &ts);
+        data = decode32u(data, &sn);
+        data = decode32u(data, &len);
+        // if(len+INTCP_OVERHEAD<size){
+        //     LOG(WARN, "input size %d > seg size %d",size,len+INTCP_OVERHEAD);
+        // }
+        data = decode32u(data, &rangeStart);
+        data = decode32u(data, &rangeEnd);
+        size -= INTCP_OVERHEAD;
+
+        if ((long)size < (long)len || (int)len < 0)
+        {
+            printf("ERROR: GS recv wrong package: size: %d, len: %d\n", size, len);
+            return tot;
+        }
+
+        if (cmd != INTCP_CMD_PUSH && cmd != INTCP_CMD_INT)
+        {
+            printf("ERROR: GS recv wrong package: cmd: %d\n", cmd);
+            return tot;
+        }
+
+        if (cmd == INTCP_CMD_INT) {
+            sessGo->inputUDP(dataOrg, INTCP_OVERHEAD+len);
+        }
+        else if (cmd == INTCP_CMD_PUSH) {
+            sessBack->inputUDP(dataOrg, INTCP_OVERHEAD+len);
+        }
+        data += len;
+        size -= len;
+
+        /*
+        seg = IntcpTransCB::createSeg(len);
+        seg->cmd = cmd;
+        seg->wnd = wnd;
+        seg->ts = ts;
+        seg->sn = sn;
+        seg->len = len;
+        seg->rangeStart = rangeStart;
+        seg->rangeEnd = rangeEnd;
+        if (len > 0)
+        {
+            memcpy(seg->data, data, len);
+            size -= len;
+
+            nwrite = write(tunFd, seg->data, seg->len);
+            if (nwrite == -1)
+            {
+                LOG(ERROR, "write to tunFd error: %d.\n", errno);
+                return -1;
+            }
+            tot += len;
+        }
+        */
+    }
+    return tot;
+}
+
+void *GSudpRecvLoop(void *_args)
 {
     struct GSudpRecvLoopArgs *args = (struct GSudpRecvLoopArgs *)_args;
     char recvBuf[1500]; // for UDP, 1500 is proper
-    uint16_t nread, nwrite;
+    int nread, nwrite;
     int recvLen;
     unsigned long int tun_count = 0, nic_count = 0;
-    unsigned char buffer[2000];
+    char buffer[BUFSIZE];
 
-    // first, create a socket for listening
-    int tunFd = args->tunFd;
-    int listenFd, maxFd;
-    if (args->listenFd == -1)
+    // first, check tunFd & listenFd
+    int tunFd = args->tunFd, listenFd = args->listenFd, maxFd;
+    if (tunFd == -1 || listenFd == -1)
     {
-        listenFd = createSocket(
-            args->listenAddr.sin_addr.s_addr, args->listenAddr.sin_port, false, nullptr);
-    }
-    else
-    {
-        listenFd = args->listenFd;
+        LOG(ERROR, "Fd error.\n");
+        return nullptr;
     }
 
     // prepare for udp recv
@@ -575,7 +726,6 @@ void * GSudpRecvLoop(void *_args)
     shared_ptr<IntcpSess> sessPtr;
     IUINT32 lastLoop = -1, timeSum1 = 0, timeSum2 = 0, timeSum3 = 0, timeTmp;
 
-    int recvedUDPlen = 0;
     maxFd = (tunFd > listenFd) ? tunFd : listenFd;
     while (1)
     {
@@ -603,9 +753,10 @@ void * GSudpRecvLoop(void *_args)
         if (FD_ISSET(tunFd, &rd_set))
         {
             // data from tun: just read it and write it to the network
-            if ((nread = read(tunFd, buffer, sizeof(buffer))) < 0)
+            // responder
+            if ((nread = read(tunFd, buffer, BUFSIZE)) < 0)
             {
-                perror("Read from tun");
+                LOG(ERROR, "Read from tun error.\n");
                 goto quit;
             }
             else if (nread == 0)
@@ -619,87 +770,65 @@ void * GSudpRecvLoop(void *_args)
                 char dst_ip[20];
                 writeIPstr(src_ip, ipheader->saddr);
                 writeIPstr(dst_ip, ipheader->daddr);
-                printf("%s->%s\n", src_ip, dst_ip);
+                LOG(TRACE, "tunFd data: %s->%s\n", src_ip, dst_ip);
                 // if (ipheader->saddr != 0 && ipheader->daddr == inet_addr("10.0.100.2"))
                 if (ipheader->saddr != 0)
                 {
-                    // write the data to listen_fd
-                    printf("Read %d bytes from tunFd\n", nread);
+                    LOG(TRACE, "Read %d bytes from tunFd\n", nread);
                     tun_count++;
-                    int len = nread, start = args->tunStart;
-                    unsigned char *pt = buffer;
-                    while (len > 0)
+                    // set the session
+                    sessPtr = args->sessPtrGo;
+                    if (sessPtr->nodeRole != INTCP_ROLE_RESPONDER)
                     {
-                        int size = len > (int)INTCP_MSS ? (int)INTCP_MSS : len;
-                        shared_ptr<IntcpSeg> seg = IntcpTransCB::createSeg(size);
-                        assert(seg);
-                        if (seg == NULL)
-                        {
-                            goto quit;
-                        }
-                        if (pt && len > 0)
-                        {
-                            // LOG(DEBUG,"memcpy size %d",size);
-                            memcpy(seg->data, pt, size);
-                        }
-                        seg->cmd = INTCP_CMD_PUSH;
-                        seg->len = size;
-                        seg->rangeStart = start;
-                        seg->rangeEnd = start + size;
-                        seg->wnd = 0;
-                        seg->ts = 0;
-                        start += size;
-                        pt += size;
-                        len -= size;
-                        nwrite = write(listenFd, pt, size);
-                        if (nwrite < 0) {
-                            perror("write to listenFd");
-                            goto quit;
-                        }
+                        LOG(ERROR, "nodeRole error.\n");
+                        goto quit;
+                    }
+                    if (GSsendFunc(sessPtr, buffer, nread, listenFd) < nread)
+                    {
+                        LOG(ERROR, "send data to listenFd error.\n");
+                        goto quit;
                     }
                 }
             }
         }
-        // timeTmp = _getMillisec();
-        // if(timeTmp-lastLoop > 1000){
-        //     LOG(DEBUG,"udp %d",recvedUDPlen/1024/1024);
-        //     lastLoop = timeTmp;
-        // }
-
-        // int recvLen = recvfrom(
-        //     listenFd,
-        //     recvBuf,sizeof(recvBuf),
-        //     MSG_DONTWAIT,
-        //     (struct sockaddr*)&recvAddr, // for server, get remote addr here
-        //     nullptr
-        // );
         // Process data received from NIC
         //=========================================
-        if (FD_ISSET(listenFd, &rd_set)) {
+        if (FD_ISSET(listenFd, &rd_set))
+        {
             // data from physical nic, read it and display the IP header
-            // read packet
-            if ((nread = read(listenFd, buffer, sizeof(buffer))) < 0) {
-                perror("Read from nic");
-                goto quit;
-            } else if (nread == 0) {
-                // socket has been closed
-                printf("The socket has been closed by server end.\n");
+            // requester
+            struct sockaddr_in *srcAddrPtr;
+            socklen_t src_len = sizeof(srcAddrPtr);
+            if ((nread = recvfrom(listenFd, buffer, BUFSIZE, 0, (struct sockaddr *)srcAddrPtr, &src_len)) < 0)
+            {
+                LOG(ERROR, "Read from nic error.\n");
                 goto quit;
             }
+            else if (nread == 0)
+            {
+                // Do nothing.
+            }
             // now buffer[] contains a full packet or frame
+            LOG(TRACE, "Read %d bytes from listenFd\n", nread);
             buffer[nread] = 0;
             nic_count++;
-            struct IntcpSeg *seg = (struct IntcpSeg *)buffer;
-            nwrite = write(tunFd, seg->data, seg->len);
-            if (nwrite < 0) {
-                perror("write to listenFd");
+
+            // remove kcp header and send data to host
+            if (GSrecvFunc(buffer, nread, args->sessPtrGo, args->sessPtrBack) < 0)
+            {
+                LOG(ERROR, "send data to host error.\n");
                 goto quit;
             }
         }
     }
-    quit:
-    if (listenFd > 0) close(listenFd);
-    if (tunFd > 0) close(tunFd);
+quit:
+
+    if (listenFd > 0)
+        close(listenFd);
+    if (tunFd > 0)
+        close(tunFd);
+    printf("Read data from tunFd %d: %lu, from listenFd %d: %lu.\n",
+           tunFd, tun_count, listenFd, nic_count);
     printf("quit!\n");
     return nullptr;
 }

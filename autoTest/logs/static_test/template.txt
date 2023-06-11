@@ -1,0 +1,12 @@
+name=nameless
+topoParam
+    1_mid
+linksParam
+    defaultLP
+        bw=40, rtt=10, loss=1, itmTotal=20, itmDown=0, varBw=0, varIntv=5, varMethod=square
+    h1_gs1
+        loss=0
+    gs2_h2
+        loss=0
+appParam
+    max_queue_size=1000, txqueuelen=1000, protocol=TCP, e2eCC=cubic, midCC=nopep, sendTime=60, sendRound=1, dynamic=0, dynamic_intv=1, data_size=0, dynamic_complete=True, dynamic_gsl_loss=1, dynamic_isl_loss=0.1, dynamic_ground_link_loss=0, dynamic_ground_link_rtt=50, dynamic_uplink_bw=5, dynamic_downlink_bw=20, dynamic_ground_link_bw=20, dynamic_isl_bw=20, dynamic_bw_fluct=False, test_type=throughputTest, analyse_callback=lineChart, sendq_length=10000, src=-1, dst=-1, route_algorithm=with_isl, flowNum=3, flowIntv=20, singlePath=True, coverage=1

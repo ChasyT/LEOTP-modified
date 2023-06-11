@@ -505,7 +505,10 @@ def getPlotParam(tp):
         }
         color, marker, linestyle = loss_to_params[tp.linksParam.defaultLP.loss]
     else:
-        linestyle = '-'
+        if tp.appParam.midCC=="nopep":
+            linestyle = '--'
+        else:
+            linestyle = "-"
         if tp.appParam.analyse_callback == "cdf":
             if tp.appParam.protocol == "TCP":
                 cc_to_linestyle = {
@@ -596,7 +599,7 @@ def drawCondfidenceCurve(group,result,keyX,label,color,marker,alpha=0.3,mode=2):
 def plotOneFig(resultPath, result, keyX, groups, title, legends=[],test_type="throughputTest",metric="thrp"):
     plt.figure(figsize=(8,5),dpi = 320)
     if test_type in ["throughputTest","throughputWithTraffic"]:
-        plt.ylim((0,20))
+        plt.ylim((0,40))
     elif test_type=="trafficTest":
         plt.ylim((100,120))
     elif test_type=="owdTest":
@@ -606,13 +609,13 @@ def plotOneFig(resultPath, result, keyX, groups, title, legends=[],test_type="th
     elif test_type=="throughputWithOwd":
         if metric=="thrp":
             #print("thrp")
-            plt.ylim((0,10))
+            plt.ylim((0,40))
         elif metric=="owd":
             #print("owd")
-            plt.ylim((0,200))
+            plt.ylim((0,1000))
         else:
             #print("loss")
-            plt.ylim((0,5))
+            plt.ylim((0,10))
     else:
         pass
     
@@ -776,10 +779,11 @@ def simplify_name(tp,string):
         if "protocol=TCP" in string:
             string = string.replace("protocol=TCP","")
         for tcpCC in ["cubic","reno","hybla","westwood","bbr","pcc","vegas"]:
-            if "e2eCC=%s"%tcpCC in string and "midCC=%s"%tcpCC in string:
+            if "e2eCC=%s"%tcpCC in string and ("midCC=%s"%tcpCC in string or "midCC=pep" in string):
                 string = string.replace("e2eCC=%s"%tcpCC,"")
                 string = string.replace("midCC=%s"%tcpCC,"")
-                string = tcpCC+ " split " + string
+                string = string.replace("midCC=pep","")
+                string = tcpCC+ "+tunnel " + string
             elif "e2eCC=%s"%tcpCC in string and "midCC=nopep" in string:
                 string = string.replace("e2eCC=%s"%tcpCC,"")
                 string = string.replace("midCC=nopep","")

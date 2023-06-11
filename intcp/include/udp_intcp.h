@@ -23,6 +23,7 @@
 #define DEFAULT_MID_PORT 6000
 #define DEFAULT_CLIENT_PORT 7000
 #define REUSE_PORT_RANGE 1000
+#define BUFSIZE 2048
 
 using namespace std;
 
@@ -59,7 +60,7 @@ public:
 };
 class IntcpSess{
 public:
-    int socketFd_toReq, socketFd_toResp;
+    int socketFd_toReq, socketFd_toResp, tunFd_toHost, packetId;
     struct sockaddr_in requesterAddr, responderAddr;
     char nameChars[QUAD_STR_LEN];
     int nodeRole;
@@ -80,6 +81,9 @@ public:
     //midnode
     IntcpSess(Quad quad, Cache* _cachePtr,
         void *(*onNewSess)(void* _sessPtr));
+    //GSnode
+    IntcpSess(Quad quad, Cache *_cachePtr, int _nodeRole,
+        void *(*onNewSess)(void *_sessPtr));
     
     int inputUDP(char *recvBuf, int recvLen);
     int request(int rangeStart, int rangeEnd);
@@ -110,12 +114,16 @@ struct GSudpRecvLoopArgs
     ByteMap<shared_ptr<IntcpSess>> *sessMapPtr;
     void* (*onNewSess)(void*);
     int (*onUnsatInt)(IUINT32 start, IUINT32 end, void *user);
+    shared_ptr<IntcpSess> sessPtrBack;
+    shared_ptr<IntcpSess> sessPtrGo;
     struct sockaddr_in listenAddr;
     int tunFd=-1;
     int listenFd=-1;
-    int tunStart=77;
     Cache* cachePtr;
 };
+
+int GSsendFunc(shared_ptr<IntcpSess> sess, char *buffer, int buflen, int listenFd);
+int GSrecvFunc(char *data, int buflen, shared_ptr<IntcpSess> sessGo, shared_ptr<IntcpSess> sessBack);
 void * GSudpRecvLoop(void *_args);
 
 #endif

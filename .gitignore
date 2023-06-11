@@ -1,0 +1,13 @@
+*.pyc
+.*/
+autoTest/result/
+autoTest/logs/
+appLayer/intcpApp/try.cpp
+appLayer/intcpApp/try
+appLayer/intcpApp/intcpm
+appLayer/intcpApp/intcps
+appLayer/intcpApp/intcpc
+appLayer/intcpApp/intcptc
+appLayer/intcpApp/intcpts
+pepsal_min/bash/pepsal
+autoTest/hypatia_trace

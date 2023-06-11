@@ -14,6 +14,7 @@
 #define USE_CACHE
 #define HBH_CC
 //#define USE_PIT
+//#define REORDER
 
 #include <assert.h>
 #include <stdarg.h>
@@ -59,8 +60,8 @@ const IUINT32 INTCP_INT_RANGE_LIMIT = INTCP_MSS;  //   5*INTCP_MSS
 const IUINT32 INTCP_UPDATE_INTERVAL = 1; //Unit: ms//DEBUG for retransmission test
 const IUINT32 INTCP_DEADLINK = 8;
 
-const IUINT32 INTCP_CMD_INT = 80;         // cmd: interest 
-const IUINT32 INTCP_CMD_PUSH = 81;        // cmd: push data
+const IUINT8 INTCP_CMD_INT = 80;         // cmd: interest 
+const IUINT8 INTCP_CMD_PUSH = 81;        // cmd: push data
 
 
 // Retransmission
@@ -120,7 +121,7 @@ const float INTCP_SENDRATE_MAX = 300;
 //=====================================================================
 struct IntcpSeg
 {
-    IUINT32 cmd;    //need send,1B
+    IUINT8 cmd;    //need send,1B
     IINT16 wnd;    //need send,2B
     IUINT32 ts;        //need send,4B
     IUINT32 sn;        //need send,4B
@@ -134,7 +135,7 @@ struct IntcpSeg
     IUINT32 xmit; // send time count
     
     char data[1];    //need send
-};
+}__attribute__((packed));
 
 struct ByteRange
 {
@@ -364,6 +365,7 @@ public:
 #endif
     // when you received a low level packet (eg. UDP packet), call it
     int input(char *data, int size);
+    int inputForHost(char *data, int size);
 
     void notifyNewData(const char *buffer, IUINT32 start, IUINT32 end);
 
